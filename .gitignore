@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+build/
+install/
+log/
+
+*.pcd
+*.npy
+global_heightmap_raw.png
+global_heightmap_filled.png

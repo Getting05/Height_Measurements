@@ -1,0 +1,10 @@
+resolution: 0.025
+origin_x: -1.0015591382980347
+origin_y: -8.179916381835938
+width: 775
+height: 501
+z_mode: min
+frame_id: map
+pcd_path: 0.pcd
+z_min: null
+z_max: 1.0
