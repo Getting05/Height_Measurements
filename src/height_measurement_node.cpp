@@ -364,7 +364,7 @@ private:
   std::string height_formula_name_;
   HeightFormula formula_ = HeightFormula::TerrainMinusBase;
   double measured_height_offset_ = 0.5;
-  double base_to_odom_x_ = 0.16w266;
+  double base_to_odom_x_ = 0.16266;
   double base_to_odom_y_ = 0.0;
   double base_to_odom_z_ = 0.11703;
   double clip_min_ = -1.0;
