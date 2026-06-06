@@ -21,12 +21,12 @@ using namespace std::chrono_literals;
 namespace height_measurements {
 namespace {
 
-constexpr int kNumX = 11;
-constexpr int kNumY = 7;
+constexpr int kNumX = 12;
+constexpr int kNumY = 11;
 constexpr int kNumHeights = kNumX * kNumY;
-constexpr double kXMin = -0.5;
-constexpr double kYMin = -0.3;
-constexpr double kPointStep = 0.1;
+constexpr double kXMin = -0.45;
+constexpr double kYMin = -0.75;
+constexpr double kPointStep = 0.15;
 
 struct Metadata {
   double resolution = 0.0;
@@ -109,9 +109,9 @@ public:
         declare_parameter<std::string>("publish_topic", "/height_measurements");
     publish_rate_ = declare_parameter<double>("publish_rate", 50.0);
     height_formula_name_ =
-        declare_parameter<std::string>("height_formula", "terrain_minus_base");
+        declare_parameter<std::string>("height_formula", "legged_gym");
     measured_height_offset_ =
-        declare_parameter<double>("measured_height_offset", 0.5);
+        declare_parameter<double>("measured_height_offset", 0.3);
     base_to_odom_x_ = declare_parameter<double>("base_to_odom_x", 0.16266);
     base_to_odom_y_ = declare_parameter<double>("base_to_odom_y", 0.0);
     base_to_odom_z_ = declare_parameter<double>("base_to_odom_z", 0.11703);
@@ -362,8 +362,8 @@ private:
   std::string publish_topic_;
   double publish_rate_ = 50.0;
   std::string height_formula_name_;
-  HeightFormula formula_ = HeightFormula::TerrainMinusBase;
-  double measured_height_offset_ = 0.5;
+  HeightFormula formula_ = HeightFormula::LeggedGym;
+  double measured_height_offset_ = 0.3;
   double base_to_odom_x_ = 0.16266;
   double base_to_odom_y_ = 0.0;
   double base_to_odom_z_ = 0.11703;

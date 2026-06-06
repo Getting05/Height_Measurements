@@ -3,7 +3,7 @@
 本包提供四足机器人 elmap RL controller 使用的高程观测工具链：
 
 - 离线：把室内 `.pcd` 点云地图转换为规则二维全局高程图。
-- 在线：C++ ROS2 节点读取 `.npy + metadata.yaml`，根据机器人全局 odometry 发布 11x7=77 维 `/height_measurements`。
+- 在线：C++ ROS2 节点读取 `.npy + metadata.yaml`，根据机器人全局 odometry 发布 12x11=132 维 `/height_measurements`。
 - 验证：Python 采样器和单点查询脚本用于检查坐标系、采样顺序和公式。
 
 ## 1. 安装依赖
@@ -119,7 +119,8 @@ ros2 run height_measurements height_measurement_node \
   -p base_frame:=base_link \
   -p publish_topic:=/height_measurements \
   -p publish_rate:=50.0 \
-  -p height_formula:=terrain_minus_base \
+  -p height_formula:=legged_gym \
+  -p measured_height_offset:=0.3 \
   -p base_to_odom_x:=0.16266 \
   -p base_to_odom_y:=0.0 \
   -p base_to_odom_z:=0.11703
@@ -136,7 +137,8 @@ ros2 launch height_measurements height_measurement.launch.py \
   base_frame:=base_link \
   publish_topic:=/height_measurements \
   publish_rate:=50.0 \
-  height_formula:=terrain_minus_base \
+  height_formula:=legged_gym \
+  measured_height_offset:=0.3 \
   base_to_odom_x:=0.16266 \
   base_to_odom_y:=0.0 \
   base_to_odom_z:=0.11703
@@ -179,10 +181,16 @@ base_z = odom_z - base_to_odom_z
 - `base_minus_terrain`：`h = robot_z - terrain_z`
 - `legged_gym`：`h = robot_z - measured_height_offset - terrain_z`
 
-如果 controller 的 observation 定义与训练不同，修改启动参数即可：
+默认使用训练时的高程观测：
+
+```text
+h = clip(base_z - 0.3 - terrain_z, -1.0, 1.0)
+```
+
+平地上如果 `base_z` 约 `0.45m`，高程 observation 大概是 `0.15`。如果 controller 的 observation 定义与训练不同，修改启动参数即可：
 
 ```bash
--p height_formula:=legged_gym -p measured_height_offset:=0.5
+-p height_formula:=terrain_minus_base
 ```
 
 输出默认裁剪到 `[-1.0, 1.0]`，可用 `clip_min` / `clip_max` 调整。
@@ -222,20 +230,20 @@ python3 tools/query_height_at.py \
 
 ## 7. 为什么在线不用 PCD 查询
 
-在线阶段不读取原始 PCD。PCD 查询需要点云搜索，复杂度高，也容易引入动态内存和延迟抖动。高程图查询是 O(1) 数组访问，每帧只查 77 个格点，更适合 50Hz / 100Hz 的 RL controller 实时运行。
+在线阶段不读取原始 PCD。PCD 查询需要点云搜索，复杂度高，也容易引入动态内存和延迟抖动。高程图查询是 O(1) 数组访问，每帧只查 132 个格点，更适合 50Hz / 100Hz 的 RL controller 实时运行。
 
 ## 8. 采样顺序
 
 默认采样点：
 
 ```python
-x_points = np.arange(-0.5, 0.5 + 1e-6, 0.1)  # 11
-y_points = np.arange(-0.3, 0.3 + 1e-6, 0.1)  # 7
+x_points = [-0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2]  # 12
+y_points = [-0.75, -0.6, -0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.6, 0.75]  # 11
 xx, yy = np.meshgrid(x_points, y_points, indexing="ij")
 local_points = np.stack([xx.reshape(-1), yy.reshape(-1)], axis=1)
 ```
 
-因此输出顺序是：每个 `x` 从 `-0.5` 到 `0.5`，在每个 `x` 下 `y` 从 `-0.3` 到 `0.3`，总长度 77。
+因此输出顺序是：每个 `x` 从 `-0.45` 到 `1.2`，在每个 `x` 下 `y` 从 `-0.75` 到 `0.75`，总长度 132。也就是先固定第一个 `x`，遍历所有 `y`，再进入第二个 `x`。
 
 ## 9. 自检
 
@@ -245,14 +253,14 @@ python3 -m unittest discover -s tests
 
 自检覆盖：
 
-- `x_points=11`，`y_points=7`，`local_points=77`
+- `x_points=12`，`y_points=11`，`local_points=132`
 - `world_to_grid` / `grid_to_world`
-- `sample()` 输出 `(77,)`
-- `sample_as_grid` 输出 `(11, 7)`
+- `sample()` 输出 `(132,)`
+- `sample_as_grid` 输出 `(12, 11)`
 - `yaw=0` 和 `yaw=pi/2` 的采样方向
 
 ## 10. controller 维度兼容
 
-本包发布 77 维高度。`elmap-rl-controller/deploy_cpp` 也需要编译期维度、YAML 配置和 JIT policy 输入维度一致。
+本包发布 132 维高度。`elmap-rl-controller/deploy_cpp` 也需要编译期维度、YAML 配置和 JIT policy 输入维度一致。
 
-如果 controller 或 JIT policy 是按其他高度网格训练的，不能直接混用 77 维高度观测，否则 CSE observation 维度会变化。请使用按 11x7 高度网格训练并导出的 `adaptation_module_latest.jit` / `body_latest.jit`。
+如果 controller 或 JIT policy 是按其他高度网格训练的，不能直接混用 132 维高度观测，否则 CSE observation 维度会变化。请使用按 12x11 高度网格训练并导出的 `adaptation_module_latest.jit` / `body_latest.jit`。

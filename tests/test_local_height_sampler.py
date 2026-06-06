@@ -12,7 +12,7 @@ TOOLS = ROOT / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
-from local_height_sampler import LocalHeightSampler
+from local_height_sampler import DEFAULT_X_POINTS, DEFAULT_Y_POINTS, LocalHeightSampler
 
 
 class LocalHeightSamplerTest(unittest.TestCase):
@@ -42,11 +42,15 @@ class LocalHeightSamplerTest(unittest.TestCase):
     def test_default_points_shape(self):
         tmp, sampler = self.make_sampler()
         self.addCleanup(tmp.cleanup)
-        self.assertEqual(len(sampler.x_points), 11)
-        self.assertEqual(len(sampler.y_points), 7)
-        self.assertEqual(sampler.local_points.shape, (77, 2))
-        np.testing.assert_allclose(sampler.x_points, np.arange(-0.5, 0.5 + 1e-6, 0.1))
-        np.testing.assert_allclose(sampler.y_points, np.arange(-0.3, 0.3 + 1e-6, 0.1))
+        self.assertEqual(len(sampler.x_points), 12)
+        self.assertEqual(len(sampler.y_points), 11)
+        self.assertEqual(sampler.local_points.shape, (132, 2))
+        np.testing.assert_allclose(sampler.x_points, DEFAULT_X_POINTS)
+        np.testing.assert_allclose(sampler.y_points, DEFAULT_Y_POINTS)
+        np.testing.assert_allclose(sampler.local_points[:11, 0], DEFAULT_X_POINTS[0])
+        np.testing.assert_allclose(sampler.local_points[:11, 1], DEFAULT_Y_POINTS)
+        np.testing.assert_allclose(sampler.local_points[11:22, 0], DEFAULT_X_POINTS[1])
+        np.testing.assert_allclose(sampler.local_points[11:22, 1], DEFAULT_Y_POINTS)
 
     def test_world_grid_round_trip(self):
         tmp, sampler = self.make_sampler()
@@ -63,10 +67,26 @@ class LocalHeightSamplerTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         flat = sampler.sample(0.0, 0.0, 0.5, 0.0)
         grid = sampler.sample(0.0, 0.0, 0.5, 0.0, sample_as_grid=True)
-        self.assertEqual(flat.shape, (77,))
-        self.assertEqual(grid.shape, (11, 7))
+        self.assertEqual(flat.shape, (132,))
+        self.assertEqual(grid.shape, (12, 11))
         self.assertEqual(flat.dtype, np.float32)
         self.assertEqual(grid.dtype, np.float32)
+
+    def test_default_formula_matches_training_observation(self):
+        tmp, sampler = self.make_sampler()
+        self.addCleanup(tmp.cleanup)
+        sampler.height_map.fill(0.0)
+        heights = sampler.sample(
+            0.0,
+            0.0,
+            0.45,
+            0.0,
+            use_bilinear=False,
+            default_height=0.0,
+        )
+        self.assertEqual(sampler.height_formula, "legged_gym")
+        self.assertEqual(sampler.measured_height_offset, 0.3)
+        self.assertAlmostEqual(float(heights[0]), 0.15, places=6)
 
     def test_yaw_zero_local_axes_match_world_axes(self):
         tmp, sampler = self.make_sampler()
