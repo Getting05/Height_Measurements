@@ -18,7 +18,15 @@ add_executable(height_measurement_node
   src/npy_reader.cpp
 )
 
+add_executable(parkour_goal_manager_node
+  src/parkour_goal_manager_node.cpp
+)
+
 target_link_libraries(height_measurement_node
+  yaml-cpp
+)
+
+target_link_libraries(parkour_goal_manager_node
   yaml-cpp
 )
 
@@ -28,11 +36,17 @@ ament_target_dependencies(height_measurement_node
   nav_msgs
 )
 
-install(TARGETS height_measurement_node
+ament_target_dependencies(parkour_goal_manager_node
+  rclcpp
+  std_msgs
+  nav_msgs
+)
+
+install(TARGETS height_measurement_node parkour_goal_manager_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch tools
+install(DIRECTORY launch tools config
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL
 )

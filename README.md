@@ -4,6 +4,7 @@
 
 - 离线：把室内 `.pcd` 点云地图转换为规则二维全局高程图。
 - 在线：C++ ROS2 节点读取 `.npy + metadata.yaml`，根据机器人全局 odometry 发布 12x11=132 维 `/height_measurements`。
+- Goal：C++ ROS2 节点读取有序 map-frame goal 点，发布 parkour policy 需要的 `/parkour/goal_yaw`。
 - 验证：Python 采样器和单点查询脚本用于检查坐标系、采样顺序和公式。
 
 ## 1. 安装依赖
@@ -173,7 +174,62 @@ base_z = odom_z - base_to_odom_z
 
 如果你的 odometry 已经是 `base_link` 原点，启动时把这三个参数都设成 `0.0`。采样网格只跟随 yaw，不跟随 roll/pitch 倾斜。
 
-## 5. 高度公式
+## 5. Goal yaw manager
+
+`parkour_goal_manager_node` 从 YAML 读取有序 goal 点，订阅雷达/SLAM odometry，按当前 base 位姿逐个追踪 goal，并发布 deploy 端直接可用的：
+
+```text
+/parkour/goal_yaw = [0.0, delta_yaw_to_current_goal, delta_yaw_to_next_goal]
+```
+
+Goal 点固定在 `map` 坐标系下，不是启动时雷达局部坐标。YAML 格式：
+
+```yaml
+frame_id: map
+goals:
+  - [1.0, 0.0]
+  - [2.0, 0.3]
+  - [3.0, 0.0]
+```
+
+只使用每个 goal 的 `x/y`；如果写了第三个 `z`，节点会忽略。示例文件在 `config/parkour_goals_example.yaml`。
+
+使用 `ros2 run`：
+
+```bash
+ros2 run height_measurements parkour_goal_manager_node \
+  --ros-args \
+  -p goal_points_path:=/path/to/parkour_goals.yaml \
+  -p odom_topic:=/aft_mapped_in_map \
+  -p goal_yaw_topic:=/parkour/goal_yaw \
+  -p map_frame:=map \
+  -p publish_rate:=50.0 \
+  -p goal_reach_threshold:=0.2 \
+  -p reach_goal_delay:=0.1 \
+  -p base_to_odom_x:=0.16266 \
+  -p base_to_odom_y:=0.0 \
+  -p base_to_odom_z:=0.11703
+```
+
+使用 launch：
+
+```bash
+ros2 launch height_measurements parkour_goal_manager.launch.py \
+  goal_points_path:=/path/to/parkour_goals.yaml \
+  odom_topic:=/aft_mapped_in_map \
+  goal_yaw_topic:=/parkour/goal_yaw \
+  map_frame:=map
+```
+
+节点使用和高程节点相同的 yaw-only 雷达到 base 换算。当前 goal 距 base 小于 `goal_reach_threshold` 并持续 `reach_goal_delay` 后，会切换到下一个 goal；最后一个 goal 抵达后继续发布 `[0.0, 0.0, 0.0]`，避免 deploy fallback。
+
+检查输出：
+
+```bash
+ros2 topic echo /parkour/goal_yaw --once
+```
+
+## 6. 高度公式
 
 `height_formula` 支持：
 
@@ -195,7 +251,7 @@ h = clip(base_z - 0.3 - terrain_z, -1.0, 1.0)
 
 输出默认裁剪到 `[-1.0, 1.0]`，可用 `clip_min` / `clip_max` 调整。
 
-## 6. 坐标系检查
+## 7. 坐标系检查
 
 PCD 地图坐标系必须和 SLAM / 重定位输出的 `map` 坐标系一致。理想情况：
 
@@ -228,11 +284,11 @@ python3 tools/query_height_at.py \
   --y 2.0
 ```
 
-## 7. 为什么在线不用 PCD 查询
+## 8. 为什么在线不用 PCD 查询
 
 在线阶段不读取原始 PCD。PCD 查询需要点云搜索，复杂度高，也容易引入动态内存和延迟抖动。高程图查询是 O(1) 数组访问，每帧只查 132 个格点，更适合 50Hz / 100Hz 的 RL controller 实时运行。
 
-## 8. 采样顺序
+## 9. 采样顺序
 
 默认采样点：
 
@@ -245,7 +301,7 @@ local_points = np.stack([xx.reshape(-1), yy.reshape(-1)], axis=1)
 
 因此输出顺序是：每个 `x` 从 `-0.45` 到 `1.2`，在每个 `x` 下 `y` 从 `-0.75` 到 `0.75`，总长度 132。也就是先固定第一个 `x`，遍历所有 `y`，再进入第二个 `x`。
 
-## 9. 自检
+## 10. 自检
 
 ```bash
 python3 -m unittest discover -s tests
@@ -259,7 +315,7 @@ python3 -m unittest discover -s tests
 - `sample_as_grid` 输出 `(12, 11)`
 - `yaw=0` 和 `yaw=pi/2` 的采样方向
 
-## 10. controller 维度兼容
+## 11. controller 维度兼容
 
 本包发布 132 维高度。`elmap-rl-controller/deploy_cpp` 也需要编译期维度、YAML 配置和 JIT policy 输入维度一致。
 
